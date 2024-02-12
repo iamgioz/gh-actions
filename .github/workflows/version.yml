@@ -1,0 +1,75 @@
+name: Push a new tag and create release
+
+on:
+  # workflow_dispatch
+  push:
+    branches:
+      - main
+
+jobs:
+  bump-version-and-tag-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # required by PaulHatch/semantic-version
+          fetch-depth: 0
+
+      - name: Semantic Version
+        id: semver
+        uses: PaulHatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "(major)"
+          minor_pattern: "(minor)"
+          version_format: "v${major}.${minor}.${patch}"
+          search_commit_body: true
+
+      - name: Create Tag
+        run: |
+          tag=${{ steps.semver.outputs.version }}
+          message='${{ steps.semver.outputs.version }}'
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@gmail.com"
+          git tag -a "${tag}" -m "${message}"
+          git push origin "${tag}"
+
+      - name: Build Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v4.1.1
+        with:
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}\n\n**Full Changelog:** #{{RELEASE_DIFF}}",
+              "pr_template": "- #{{TITLE}} (#{{URL}})", 
+              "categories": [
+                {
+                  "title": "## Bug Fixes",
+                  "labels": ["bug", "fix"]
+                },
+                {
+                  "title": "## Enhancements",
+                  "labels": ["enhancement"]
+                },
+                {
+                  "title": "## New Features",
+                  "labels": ["feature"]
+                },
+                {
+                  "title": "## BREAKING CHANGES",
+                  "labels": ["major"]
+                },
+                {
+                  "title": "## Changes",
+                  "labels": []
+                }
+              ]
+            }
+
+      - name: Create Release Note
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          tag: ${{ steps.semver.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          removeArtifacts: true
